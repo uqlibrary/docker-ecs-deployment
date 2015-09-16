@@ -1,0 +1,46 @@
+{
+  "family": "ecs-deployment",
+  "containerDefinitions": [
+    {
+      "name": "ecs-deployment",
+      "image": "uqlibrary/docker-ecs-deployment:1",
+      "cpu": 128,
+      "memory": 256,
+      "entryPoint": [],
+      "environment" : [
+        { 
+          "name" : "SQS_URL", 
+          "value" : "https://ap-southeast-2.queue.amazonaws.com/908660671515/ecs-deployment" 
+        },
+        { 
+          "name" : "ECS_CLUSTER", 
+          "value" : "default" 
+        },
+        { 
+          "name" : "ECS_TIMEOUT", 
+          "value" : "300" 
+        }
+      ],
+      "command": [],
+      "portMappings": [],
+      "volumesFrom": [],
+      "links": [],
+      "mountPoints": [
+        {
+          "sourceVolume": "aws",
+          "containerPath": "/root/.aws",
+          "readOnly": false
+        }
+      ],
+      "essential": true
+    }
+  ],
+  "volumes": [
+    {
+      "name": "aws",
+      "host": {
+        "sourcePath": "/root/services/ecs-deployment/aws"
+      }
+    }
+  ]
+}

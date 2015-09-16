@@ -1,4 +1,4 @@
-ecsdeploy:
+ecs-deployment:
     image: uqlibrary/docker-ecs-deployment:1
     env_file:
         - local.env

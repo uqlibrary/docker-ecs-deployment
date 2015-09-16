@@ -1,0 +1,108 @@
+#!/bin/bash
+
+# Test for missing ENV vars
+if [[ -z $SQS_URL ]] ; then
+    echo "SQS_URL is not set. You must specify Queue URL via ENV."
+    exit 1
+fi
+if [[ -z $ECS_CLUSTER ]] ; then
+    echo "ECS_CLUSTER is not set. You must specify target ECS cluster."
+    exit 1
+fi
+if [[ -z $ECS_TIMEOUT ]] ; then
+    ECS_TIMEOUT=300
+fi
+
+# Define temp files
+MSGFILE=newdef.msg
+JSONFILE=newdef.json
+
+# Fetch new message from SQS
+echo "Fetching SQS Message from Queue: $SQS_URL";
+aws sqs receive-message --queue-url $SQS_URL --message-attribute-names "service" --visibility-timeout 300 > $MSGFILE
+
+
+# Check new message is not empty
+if ! [[ -s $MSGFILE ]] ; then echo "SQS Queue was empty (or Receive Message failed)." && exit 1; fi
+
+# Get message ID (test for valid sqs json)
+MSGID=`jq < $MSGFILE '.Messages[0]|.MessageId' |tr -d '"'`
+if [[ $MSGID == "null" ]] || [[ -z $MSGID ]] ; then echo "SQS Message malformed (Msg ID not found)." && exit 1; fi
+echo "SQS Message ID: $MSGID";
+
+# Get message receipt handle (for deletion)
+RECEIPT=`jq < $MSGFILE '.Messages[0]|.ReceiptHandle' |tr -d '"'`
+if [[ $RECEIPT == "null" ]] || [[ -z $RECEIPT ]] ; then echo "SQS Message malformed (Receipt Handle not found)." && exit 1; fi
+
+# Get service name from message attribute
+SERVICE=`jq < $MSGFILE '.Messages[0]|.MessageAttributes|.service|.StringValue' |tr -d '"'`
+if [[ $SERVICE == "null" ]] || [[ -z $SERVICE ]] ; then echo "Service attribute missing." && exit 1; fi
+
+# Extract task definition to json file
+jq < $MSGFILE '.Messages[0]|.Body' |sed -e 's/"{/{/' |sed -e 's/}\\n"/}\\n/' |sed -e 's/}"/}/' | sed -e 's/\\\"/\"/g' | sed -e 's/\\"/"/g' |sed -e 's/\\n/\n/g' > $JSONFILE
+if ! [[ -s $JSONFILE ]] ; then echo "Task Def JSON is empty." && exit 1; fi
+echo "New task definition for service: $SERVICE";
+
+
+# Run some sanity checks on new task definition
+NEW_TASK_FAMILY=`jq < $JSONFILE '.family'`
+if [[ $NEW_TASK_FAMILY == "null" ]] || [[ -z $NEW_TASK_FAMILY ]] ; then echo "Task Definition malformed (Family not found)." && exit 1; fi
+NEW_TASK_CONTAINERS=`jq < $JSONFILE '.containerDefinitions'`
+if [[ $NEW_TASK_CONTAINERS == "null" ]] || [[ -z $NEW_TASK_CONTAINERS ]] ; then echo "Task Definition malformed (Containers not found)." && exit 1; fi
+NEW_TASK_VOLUMES=`jq < $JSONFILE '.volumes'`
+if [[ $NEW_TASK_VOLUMES == "null" ]] || [[ -z $NEW_TASK_VOLUMES ]] ; then echo "Task Definition malformed (Volumes not found)." && exit 1; fi
+
+
+# Get current task definition name from service
+CURRENT_TASK=`aws ecs describe-services --services $SERVICE --cluster $ECS_CLUSTER | jq .services[0].taskDefinition | tr -d '"'`
+if [[ $CURRENT_TASK == "null" ]] || [[ -z $CURRENT_TASK ]] ; then 
+    echo "Service not found: $SERVICE"
+    exit 1
+else
+    echo "Current task definition: $CURRENT_TASK";
+fi
+
+
+# Register the new task definition, and store its ARN
+NEW_TASKDEF=`aws ecs register-task-definition --cli-input-json file://$JSONFILE | jq .taskDefinition.taskDefinitionArn | tr -d '"'`
+echo "New task definition: $NEW_TASKDEF";
+
+# Update the service
+echo "Updating service: $SERVICE";
+UPDATE=`aws ecs update-service --cluster $ECS_CLUSTER --service $SERVICE --task-definition $NEW_TASKDEF`
+
+# Remove SQS Message
+echo "Removing SQS message: $RECEIPT";
+DEL_SQS_MSG=`aws sqs delete-message --queue-url $SQS_URL --receipt-handle $RECEIPT`
+
+# See if the service is able to come up again
+echo "Waiting for service update to complete ..."
+every=10
+i=0
+while [ $i -lt $ECS_TIMEOUT ] 
+do
+  # Scan the list of running tasks for that service, and see if one of them is the
+  # new version of the task definition
+  rm -f tasks
+  
+  aws ecs list-tasks --cluster $ECS_CLUSTER  --service-name $SERVICE --desired-status RUNNING \
+    | jq '.taskArns[]' \
+    | xargs -I{} aws ecs describe-tasks --cluster $ECS_CLUSTER --tasks {} >> tasks
+  
+  jq < tasks > results ".tasks[]| if .taskDefinitionArn == \"$NEW_TASKDEF\" then . else empty end|.lastStatus"
+  
+  RUNNING=`grep -e "RUNNING" results`
+
+  if [ $RUNNING ]; then
+    echo "Service updated successfully, new task definition running.";
+    exit 0
+  fi
+  
+  sleep $every
+  i=$(( $i + $every ))
+done
+
+# Timeout
+echo "ERROR: New task definition not running within $ECS_TIMEOUT seconds"
+exit 1
+

@@ -12,7 +12,7 @@ Used to perform blue/green deployments of new docker images to production servic
 
 The intention is for this container to be run as an ECS task whenever a "watcher" script detects a new message is in the SQS queue.
 
-_Credit: The main body (and workflow) of this script is original, however it was inspired by [ecs-deploy](https://github.com/silinternational/ecs-deploy) and the code responsible for registering the new definiton, updating the service and then reporting success has been copied (as permitted by the MIT License). Kudos and thanks to SIL International._
+_Credit: The main body (and workflow) of this script is original, however it was inspired by [ecs-deploy](https://github.com/silinternational/ecs-deploy) and the code responsible for registering the new definiton, updating the service and then reporting success has been copied (as permitted by the MIT License). Kudos and thanks to [SIL International](https://github.com/silinternational/)._
 
 ### Requirements
 
@@ -55,7 +55,7 @@ _Credit: The main body (and workflow) of this script is original, however it was
 
 3. The following ENV variables 
 
-   ```SQS_URL=<YOUR_SQS_URL>```
-   ```ECS_CLUSTER=<TARGET_ECS_CLUSTER>``` (Optional: defaults to "default")
-   ```ECS_TIMEOUT=<MAX_WAIT_FOR_SUCCESS>``` (Optional: defaults to 300 seconds)
+   `SQS_URL=<YOUR_SQS_URL>`
+   `ECS_CLUSTER=<TARGET_ECS_CLUSTER>` (Optional: defaults to "default")
+   `ECS_TIMEOUT=<MAX_WAIT_FOR_SUCCESS>` (Optional: defaults to 300 seconds)
    

@@ -3,4 +3,4 @@ ecs-deployment:
     env_file:
         - local.env
     volumes:
-        - ~/.aws/:/root/.aws
+        - .aws/:/root/.aws

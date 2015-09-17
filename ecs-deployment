@@ -6,8 +6,7 @@ if [[ -z $SQS_URL ]] ; then
     exit 1
 fi
 if [[ -z $ECS_CLUSTER ]] ; then
-    echo "ECS_CLUSTER is not set. You must specify target ECS cluster."
-    exit 1
+    ECS_CLUSTER=default
 fi
 if [[ -z $ECS_TIMEOUT ]] ; then
     ECS_TIMEOUT=300
@@ -17,13 +16,14 @@ fi
 MSGFILE=newdef.msg
 JSONFILE=newdef.json
 
+
 # Fetch new message from SQS
 echo "Fetching SQS Message from Queue: $SQS_URL";
 aws sqs receive-message --queue-url $SQS_URL --message-attribute-names "service" --visibility-timeout 300 > $MSGFILE
 
-
 # Check new message is not empty
 if ! [[ -s $MSGFILE ]] ; then echo "SQS Queue was empty (or Receive Message failed)." && exit 1; fi
+
 
 # Get message ID (test for valid sqs json)
 MSGID=`jq < $MSGFILE '.Messages[0]|.MessageId' |tr -d '"'`
@@ -33,11 +33,11 @@ echo "SQS Message ID: $MSGID";
 # Get message receipt handle (for deletion)
 RECEIPT=`jq < $MSGFILE '.Messages[0]|.ReceiptHandle' |tr -d '"'`
 if [[ $RECEIPT == "null" ]] || [[ -z $RECEIPT ]] ; then echo "SQS Message malformed (Receipt Handle not found)." && exit 1; fi
+echo "SQS Message Receipt Handle: $RECEIPT";
 
 # Get service name from message attribute
 SERVICE=`jq < $MSGFILE '.Messages[0]|.MessageAttributes|.service|.StringValue' |tr -d '"'`
 if [[ $SERVICE == "null" ]] || [[ -z $SERVICE ]] ; then echo "Service attribute missing." && exit 1; fi
-
 # Extract task definition to json file
 jq < $MSGFILE '.Messages[0]|.Body' |sed -e 's/"{/{/' |sed -e 's/}\\n"/}\\n/' |sed -e 's/}"/}/' | sed -e 's/\\\"/\"/g' | sed -e 's/\\"/"/g' |sed -e 's/\\n/\n/g' > $JSONFILE
 if ! [[ -s $JSONFILE ]] ; then echo "Task Def JSON is empty." && exit 1; fi
@@ -64,8 +64,9 @@ fi
 
 
 # Register the new task definition, and store its ARN
+echo "Registering new task definition ...";
 NEW_TASKDEF=`aws ecs register-task-definition --cli-input-json file://$JSONFILE | jq .taskDefinition.taskDefinitionArn | tr -d '"'`
-echo "New task definition: $NEW_TASKDEF";
+echo "New task definition registered: $NEW_TASKDEF";
 
 # Update the service
 echo "Updating service: $SERVICE";
@@ -105,4 +106,3 @@ done
 # Timeout
 echo "ERROR: New task definition not running within $ECS_TIMEOUT seconds"
 exit 1
-

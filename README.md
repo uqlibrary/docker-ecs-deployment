@@ -61,3 +61,7 @@ _Credit: The main body (and workflow) of this script is original, however it was
    
    `ECS_TIMEOUT=<MAX_WAIT_FOR_SUCCESS>` (Optional: defaults to 300 seconds)
    
+4. The SQS messages in the queue providing the new task definitions must have:
+ - the complete **Task Definition JSON** as the **Message Body** (SQS will escape the JSON payload as required)
+ - the target **ECS Service name** set as a **Message Attribute** named **"service"**
+   Example (aws-cli): `aws sqs send-message --queue-url "<SQS_URL>"  --message-body "<NEW_TASK_DEF>" --message-attributes '{"service" : { "DataType":"String", "StringValue":"<SERVICE_NAME>"}}'`

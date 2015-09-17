@@ -56,6 +56,8 @@ _Credit: The main body (and workflow) of this script is original, however it was
 3. The following ENV variables 
 
    `SQS_URL=<YOUR_SQS_URL>`
+   
    `ECS_CLUSTER=<TARGET_ECS_CLUSTER>` (Optional: defaults to "default")
+   
    `ECS_TIMEOUT=<MAX_WAIT_FOR_SUCCESS>` (Optional: defaults to 300 seconds)
    

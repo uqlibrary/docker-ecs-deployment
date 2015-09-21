@@ -3,7 +3,7 @@
   "containerDefinitions": [
     {
       "name": "ecs-deployment",
-      "image": "uqlibrary/docker-ecs-deployment:1",
+      "image": "uqlibrary/docker-ecs-deployment:2",
       "cpu": 128,
       "memory": 256,
       "entryPoint": [],
@@ -19,6 +19,14 @@
         { 
           "name" : "ECS_TIMEOUT", 
           "value" : "300" 
+        },
+        { 
+          "name" : "SLACK_WEBHOOK", 
+          "value" : "<SLACK_WEBHOOK>" 
+        },
+        { 
+          "name" : "SLACK_CHANNEL", 
+          "value" : "<SLACK_CHANNEL>" 
         }
       ],
       "command": [],

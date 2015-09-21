@@ -12,6 +12,15 @@ if [[ -z $ECS_TIMEOUT ]] ; then
     ECS_TIMEOUT=300
 fi
 
+# Enable Slack WebHook Notification if ENVs are set
+SLACK_NOTIFY=false
+if ! [[ -z $SLACK_WEBHOOK ]] ; then
+    SLACK_NOTIFY=true
+    if [[ -z $SLACK_CHANNEL ]] ; then SLACK_NOTIFY=false ; fi
+    if [[ -z $SLACK_BOTNAME ]] ; then SLACK_BOTNAME="ecs-deployment" ; fi
+    if [[ -z $SLACK_BOTEMOJI ]] ; then SLACK_BOTEMOJI=":cloud:" ; fi
+fi
+
 # Define temp files
 MSGFILE=newdef.msg
 JSONFILE=newdef.json
@@ -76,8 +85,16 @@ UPDATE=`aws ecs update-service --cluster $ECS_CLUSTER --service $SERVICE --task-
 echo "Removing SQS message: $RECEIPT";
 DEL_SQS_MSG=`aws sqs delete-message --queue-url $SQS_URL --receipt-handle $RECEIPT`
 
+# Send Slack Notification (if enabled)
+if [[ SLACK_NOTIFY=="true" ]] ; then
+    echo "Posting Slack Notification to WebHook: $SLACK_WEBHOOK";
+    SLACK_MESSAGE="New ECS Deployment: Service \"$SERVICE\" updated with new Task Definition \"$NEW_TASKDEF\""
+    PAYLOAD="payload={\"channel\": \"${SLACK_CHANNEL}\", \"username\": \"${SLACK_BOTNAME}\", \"text\": \"${SLACK_MESSAGE}\", \"icon_emoji\": \"${SLACK_BOTEMOJI}\"}"
+    CURL_RESULT=`curl -s -S -X POST --data-urlencode "$PAYLOAD" $SLACK_WEBHOOK`
+fi
+
 # See if the service is able to come up again
-echo "Waiting for service update to complete ..."
+echo "Waiting for service update to complete ...";
 every=10
 i=0
 while [ $i -lt $ECS_TIMEOUT ] 

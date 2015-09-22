@@ -18,7 +18,6 @@ if ! [[ -z $SLACK_WEBHOOK ]] ; then
     SLACK_NOTIFY=true
     if [[ -z $SLACK_CHANNEL ]] ; then SLACK_NOTIFY=false ; fi
     if [[ -z $SLACK_BOTNAME ]] ; then SLACK_BOTNAME="ecs-deployment" ; fi
-    if [[ -z $SLACK_BOTEMOJI ]] ; then SLACK_BOTEMOJI=":cloud:" ; fi
 fi
 
 # Define temp files
@@ -63,23 +62,27 @@ if [[ $NEW_TASK_VOLUMES == "null" ]] || [[ -z $NEW_TASK_VOLUMES ]] ; then echo "
 
 
 # Get current task definition name from service
-CURRENT_TASK=`aws ecs describe-services --services $SERVICE --cluster $ECS_CLUSTER | jq .services[0].taskDefinition | tr -d '"'`
-if [[ $CURRENT_TASK == "null" ]] || [[ -z $CURRENT_TASK ]] ; then 
+CURRENT_TASK_ARN=`aws ecs describe-services --services $SERVICE --cluster $ECS_CLUSTER | jq .services[0].taskDefinition | tr -d '"'`
+if [[ $CURRENT_TASK_ARN == "null" ]] || [[ -z $CURRENT_TASK_ARN ]] ; then 
     echo "Service not found: $SERVICE"
     exit 1
 else
+    CURRENT_TASK=`echo ${CURRENT_TASK_ARN} |cut -d':' -f6-7 |cut -d'/' -f2`
     echo "Current task definition: $CURRENT_TASK";
 fi
 
 
 # Register the new task definition, and store its ARN
 echo "Registering new task definition ...";
-NEW_TASKDEF=`aws ecs register-task-definition --cli-input-json file://$JSONFILE | jq .taskDefinition.taskDefinitionArn | tr -d '"'`
+NEW_TASKDEF_ARN=`aws ecs register-task-definition --cli-input-json file://$JSONFILE | jq .taskDefinition.taskDefinitionArn | tr -d '"'`
+NEW_TASKDEF=`echo ${NEW_TASKDEF_ARN} |cut -d':' -f6-7 |cut -d'/' -f2`
+NEW_TASKDEF_NAME=`echo ${NEW_TASKDEF} |cut -d':' -f1`
+NEW_TASKDEF_REV=`echo ${NEW_TASKDEF} |cut -d':' -f2`
 echo "New task definition registered: $NEW_TASKDEF";
 
 # Update the service
 echo "Updating service: $SERVICE";
-UPDATE=`aws ecs update-service --cluster $ECS_CLUSTER --service $SERVICE --task-definition $NEW_TASKDEF`
+UPDATE=`aws ecs update-service --cluster $ECS_CLUSTER --service $SERVICE --task-definition $NEW_TASKDEF_ARN`
 
 # Remove SQS Message
 echo "Removing SQS message: $RECEIPT";
@@ -87,9 +90,13 @@ DEL_SQS_MSG=`aws sqs delete-message --queue-url $SQS_URL --receipt-handle $RECEI
 
 # Send Slack Notification (if enabled)
 if [[ SLACK_NOTIFY=="true" ]] ; then
+    AWS_REGION=`echo ${NEW_TASKDEF_ARN} |cut -d':' -f4`
+    SERVICE_URL="https://${AWS_REGION}.console.aws.amazon.com/ecs/home?region=${AWS_REGION}#/clusters/${ECS_CLUSTER}/services/${SERVICE}/tasks"
+    TASKDEF_URL="https://${AWS_REGION}.console.aws.amazon.com/ecs/home?region=${AWS_REGION}#/taskDefinitions/${NEW_TASKDEF_NAME}/${NEW_TASKDEF_REV}"
     echo "Posting Slack Notification to WebHook: $SLACK_WEBHOOK";
-    SLACK_MESSAGE="New ECS Deployment: Service \"$SERVICE\" updated with new Task Definition \"$NEW_TASKDEF\""
-    PAYLOAD="payload={\"channel\": \"${SLACK_CHANNEL}\", \"username\": \"${SLACK_BOTNAME}\", \"text\": \"${SLACK_MESSAGE}\", \"icon_emoji\": \"${SLACK_BOTEMOJI}\"}"
+    SLACK_PRETEXT="New ECS Deployment:"
+    SLACK_MESSAGE="Service <${SERVICE_URL}|${SERVICE}> updated with new Task Definition <${TASKDEF_URL}|${NEW_TASKDEF}>"
+    PAYLOAD="payload={\"channel\": \"${SLACK_CHANNEL}\", \"username\": \"${SLACK_BOTNAME}\", \"attachments\":[{\"fallback\":\"${SLACK_PRETEXT} ${SLACK_MESSAGE}\", \"pretext\":\"*${SLACK_PRETEXT} ${SLACK_MESSAGE}*\", \"color\":\"#D00000\", \"mrkdwn_in\":[\"text\", \"pretext\"], \"fields\":[{\"title\":\"Service\", \"value\":\"${SERVICE}\", \"short\":false}, {\"title\":\"Task Definiton\", \"value\":\"${NEW_TASKDEF}\", \"short\":false}]}] }"
     CURL_RESULT=`curl -s -S -X POST --data-urlencode "$PAYLOAD" $SLACK_WEBHOOK`
 fi
 
@@ -107,7 +114,7 @@ do
     | jq '.taskArns[]' \
     | xargs -I{} aws ecs describe-tasks --cluster $ECS_CLUSTER --tasks {} >> tasks
   
-  jq < tasks > results ".tasks[]| if .taskDefinitionArn == \"$NEW_TASKDEF\" then . else empty end|.lastStatus"
+  jq < tasks > results ".tasks[]| if .taskDefinitionArn == \"$NEW_TASKDEF_ARN\" then . else empty end|.lastStatus"
   
   RUNNING=`grep -e "RUNNING" results`
 

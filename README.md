@@ -67,8 +67,6 @@ _Credit: The main body (and workflow) of this script is original, however it was
    
    `SLACK_BOTNAME=<SLACK_BOTNAME>` (Optional: defaults to "ecs-deployment")
    
-   `SLACK_BOTEMOJI=<SLACK_BOTEMOJI>` (Optional: defaults to ":cloud:")
-
 4. The SQS messages in the queue providing the new task definitions must have:
  - the complete **Task Definition JSON** as the **Message Body** (SQS will escape the JSON payload as required)
  - the target **ECS Service name** set as a **Message Attribute** named **"service"**

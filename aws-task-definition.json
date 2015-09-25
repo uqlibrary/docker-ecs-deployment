@@ -3,7 +3,7 @@
   "containerDefinitions": [
     {
       "name": "ecs-deployment",
-      "image": "uqlibrary/docker-ecs-deployment:3",
+      "image": "uqlibrary/docker-ecs-deployment:4",
       "cpu": 128,
       "memory": 256,
       "entryPoint": [],

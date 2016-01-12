@@ -18,6 +18,7 @@ if ! [[ -z $SLACK_WEBHOOK ]] ; then
     SLACK_NOTIFY=true
     if [[ -z $SLACK_CHANNEL ]] ; then SLACK_NOTIFY=false ; fi
     if [[ -z $SLACK_BOTNAME ]] ; then SLACK_BOTNAME="ecs-deployment" ; fi
+    if [[ -z $SLACK_COLOR ]] ; then SLACK_COLOR="#335EFF" ; fi
 fi
 
 # Define temp files
@@ -96,7 +97,7 @@ if [[ SLACK_NOTIFY=="true" ]] ; then
     echo "Posting Slack Notification to WebHook: $SLACK_WEBHOOK";
     SLACK_PRETEXT="New ECS Deployment:"
     SLACK_MESSAGE="Service <${SERVICE_URL}|${SERVICE}> updated with new Task Definition <${TASKDEF_URL}|${NEW_TASKDEF}>"
-    PAYLOAD="payload={\"channel\": \"${SLACK_CHANNEL}\", \"username\": \"${SLACK_BOTNAME}\", \"attachments\":[{\"fallback\":\"${SLACK_PRETEXT} ${SLACK_MESSAGE}\", \"pretext\":\"*${SLACK_PRETEXT} ${SLACK_MESSAGE}*\", \"color\":\"#D00000\", \"mrkdwn_in\":[\"text\", \"pretext\"], \"fields\":[{\"title\":\"Service\", \"value\":\"${SERVICE}\", \"short\":false}, {\"title\":\"Task Definiton\", \"value\":\"${NEW_TASKDEF}\", \"short\":false}]}] }"
+    PAYLOAD="payload={\"channel\": \"${SLACK_CHANNEL}\", \"username\": \"${SLACK_BOTNAME}\", \"attachments\":[{\"fallback\":\"${SLACK_PRETEXT} ${SLACK_MESSAGE}\", \"pretext\":\"*${SLACK_PRETEXT} ${SLACK_MESSAGE}*\", \"color\":\"${SLACK_COLOR}\", \"mrkdwn_in\":[\"text\", \"pretext\"], \"fields\":[{\"title\":\"Service\", \"value\":\"${SERVICE}\", \"short\":false}, {\"title\":\"Task Definiton\", \"value\":\"${NEW_TASKDEF}\", \"short\":false}]}] }"
     CURL_RESULT=`curl -s -S -X POST --data-urlencode "$PAYLOAD" $SLACK_WEBHOOK`
 fi
 

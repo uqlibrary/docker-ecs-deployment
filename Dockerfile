@@ -1,4 +1,4 @@
-FROM uqlibrary/docker-base:1
+FROM uqlibrary/docker-base:4
 
 RUN \
  curl -o /root/ecs-deployment https://raw.githubusercontent.com/uqlibrary/docker-ecs-deployment/master/ecs-deployment && \

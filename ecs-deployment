@@ -12,6 +12,10 @@ if [[ -z $ECS_TIMEOUT ]] ; then
     ECS_TIMEOUT=300
 fi
 
+# Define temp files
+MSGFILE=newdef.msg
+JSONFILE=newdef.json
+
 # Enable Slack WebHook Notification if ENVs are set
 SLACK_NOTIFY=false
 if ! [[ -z $SLACK_WEBHOOK ]] ; then
@@ -21,9 +25,26 @@ if ! [[ -z $SLACK_WEBHOOK ]] ; then
     if [[ -z $SLACK_COLOR ]] ; then SLACK_COLOR="#335EFF" ; fi
 fi
 
-# Define temp files
-MSGFILE=newdef.msg
-JSONFILE=newdef.json
+# Failure function
+failure () {
+    ERROR_MGS="$1"
+    echo "ERROR: ${ERROR_MGS}"
+    if [[ SLACK_NOTIFY=="true" ]] ; then 
+        SLACK_PRETEXT="ECS Deployment Failure:"
+        SLACK_MESSAGE="${ERROR_MGS}!"
+        SLACK_COLOR="#FF0000"
+        echo "Posting Slack Notification to WebHook: $SLACK_WEBHOOK";
+        PAYLOAD="payload={\"channel\": \"${SLACK_CHANNEL}\", \"username\": \"${SLACK_BOTNAME}\", \"attachments\":[{\"fallback\":\"${SLACK_PRETEXT} ${SLACK_MESSAGE}\", \"pretext\":\"*${SLACK_PRETEXT} ${SLACK_MESSAGE}*\", \"color\":\"${SLACK_COLOR}\", \"mrkdwn_in\":[\"text\", \"pretext\"], \"fields\":[{\"title\":\"Service\", \"value\":\"${SERVICE}\", \"short\":false}, {\"title\":\"Error Mesage\", \"value\":\"${ERROR_MGS}\", \"short\":false}]}] }"
+        CURL_RESULT=`curl -s -S -X POST --data-urlencode "$PAYLOAD" $SLACK_WEBHOOK`
+    fi
+    if [[ $RECEIPT == "null" ]] || [[ -z $RECEIPT ]] ; then
+        return 0
+    else
+        echo "Removing SQS message: $RECEIPT";
+        DEL_SQS_MSG=`aws sqs delete-message --queue-url $SQS_URL --receipt-handle $RECEIPT`
+        return 0
+    fi
+}
 
 
 # Fetch new message from SQS
@@ -36,50 +57,48 @@ if ! [[ -s $MSGFILE ]] ; then echo "SQS Queue was empty (or Receive Message fail
 
 # Get message ID (test for valid sqs json)
 MSGID=`jq < $MSGFILE '.Messages[0]|.MessageId' |tr -d '"'`
-if [[ $MSGID == "null" ]] || [[ -z $MSGID ]] ; then echo "SQS Message malformed (Msg ID not found)." && exit 1; fi
+if [[ $MSGID == "null" ]] || [[ -z $MSGID ]] ; then failure "SQS Message malformed (Msg ID not found)" && exit 1; fi
 echo "SQS Message ID: $MSGID";
 
 # Get message receipt handle (for deletion)
 RECEIPT=`jq < $MSGFILE '.Messages[0]|.ReceiptHandle' |tr -d '"'`
-if [[ $RECEIPT == "null" ]] || [[ -z $RECEIPT ]] ; then echo "SQS Message malformed (Receipt Handle not found)." && exit 1; fi
+if [[ $RECEIPT == "null" ]] || [[ -z $RECEIPT ]] ; then failure "SQS Message malformed (Receipt Handle not found)" && exit 1; fi
 echo "SQS Message Receipt Handle: $RECEIPT";
 
 # Get service name from message attribute
 SERVICE=`jq < $MSGFILE '.Messages[0]|.MessageAttributes|.service|.StringValue' |tr -d '"'`
-if [[ $SERVICE == "null" ]] || [[ -z $SERVICE ]] ; then echo "Service attribute missing." && exit 1; fi
+if [[ $SERVICE == "null" ]] || [[ -z $SERVICE ]] ; then failure "SQS Message malformed (Service attribute missing)" && exit 1; fi
 # Extract task definition to json file
 jq < $MSGFILE '.Messages[0]|.Body' |sed -e 's/"{/{/' |sed -e 's/}\\n"/}\\n/' |sed -e 's/}"/}/' | sed -e 's/\\\"/\"/g' | sed -e 's/\\"/"/g' |sed -e 's/\\n/\n/g' > $JSONFILE
-if ! [[ -s $JSONFILE ]] ; then echo "Task Def JSON is empty." && exit 1; fi
+if ! [[ -s $JSONFILE ]] ; then failure "Task Def JSON is empty" && exit 1; fi
 echo "New task definition for service: $SERVICE";
 
 
 # Run some sanity checks on new task definition
 NEW_TASK_FAMILY=`jq < $JSONFILE '.family'`
-if [[ $NEW_TASK_FAMILY == "null" ]] || [[ -z $NEW_TASK_FAMILY ]] ; then echo "Task Definition malformed (Family not found)." && exit 1; fi
+if [[ $NEW_TASK_FAMILY == "null" ]] || [[ -z $NEW_TASK_FAMILY ]] ; then failure "Task Definition malformed (Family not found)" && exit 1; fi
 NEW_TASK_CONTAINERS=`jq < $JSONFILE '.containerDefinitions'`
-if [[ $NEW_TASK_CONTAINERS == "null" ]] || [[ -z $NEW_TASK_CONTAINERS ]] ; then echo "Task Definition malformed (Containers not found)." && exit 1; fi
+if [[ $NEW_TASK_CONTAINERS == "null" ]] || [[ -z $NEW_TASK_CONTAINERS ]] ; then failure "Task Definition malformed (Containers not found)" && exit 1; fi
 NEW_TASK_VOLUMES=`jq < $JSONFILE '.volumes'`
-if [[ $NEW_TASK_VOLUMES == "null" ]] || [[ -z $NEW_TASK_VOLUMES ]] ; then echo "Task Definition malformed (Volumes not found)." && exit 1; fi
+if [[ $NEW_TASK_VOLUMES == "null" ]] || [[ -z $NEW_TASK_VOLUMES ]] ; then failure "Task Definition malformed (Volumes not found)" && exit 1; fi
 
 
 # Get current task definition name from service
 CURRENT_TASK_ARN=`aws ecs describe-services --services $SERVICE --cluster $ECS_CLUSTER | jq .services[0].taskDefinition | tr -d '"'`
-if [[ $CURRENT_TASK_ARN == "null" ]] || [[ -z $CURRENT_TASK_ARN ]] ; then 
-    echo "Service not found: $SERVICE"
-    exit 1
-else
-    CURRENT_TASK=`echo ${CURRENT_TASK_ARN} |cut -d':' -f6-7 |cut -d'/' -f2`
-    echo "Current task definition: $CURRENT_TASK";
-fi
+if [[ $CURRENT_TASK_ARN == "null" ]] || [[ -z $CURRENT_TASK_ARN ]] ; then failure "Service ${SERVICE} not found" && exit 1; fi
+CURRENT_TASK=`echo ${CURRENT_TASK_ARN} |cut -d':' -f6-7 |cut -d'/' -f2`
+echo "Current task definition: $CURRENT_TASK";
 
 
 # Register the new task definition, and store its ARN
 echo "Registering new task definition ...";
 NEW_TASKDEF_ARN=`aws ecs register-task-definition --cli-input-json file://$JSONFILE | jq .taskDefinition.taskDefinitionArn | tr -d '"'`
+if [[ $NEW_TASKDEF_ARN == "null" ]] || [[ -z $NEW_TASKDEF_ARN ]] ; then failure "Task definition registration failed for ${SERVICE}" && exit 1; fi
 NEW_TASKDEF=`echo ${NEW_TASKDEF_ARN} |cut -d':' -f6-7 |cut -d'/' -f2`
 NEW_TASKDEF_NAME=`echo ${NEW_TASKDEF} |cut -d':' -f1`
 NEW_TASKDEF_REV=`echo ${NEW_TASKDEF} |cut -d':' -f2`
 echo "New task definition registered: $NEW_TASKDEF";
+
 
 # Update the service
 echo "Updating service: $SERVICE";
@@ -88,15 +107,16 @@ UPDATE=`aws ecs update-service --cluster $ECS_CLUSTER --service $SERVICE --task-
 # Remove SQS Message
 echo "Removing SQS message: $RECEIPT";
 DEL_SQS_MSG=`aws sqs delete-message --queue-url $SQS_URL --receipt-handle $RECEIPT`
+RECEIPT=""
 
 # Send Slack Notification (if enabled)
 if [[ SLACK_NOTIFY=="true" ]] ; then
     AWS_REGION=`echo ${NEW_TASKDEF_ARN} |cut -d':' -f4`
     SERVICE_URL="https://${AWS_REGION}.console.aws.amazon.com/ecs/home?region=${AWS_REGION}#/clusters/${ECS_CLUSTER}/services/${SERVICE}/tasks"
     TASKDEF_URL="https://${AWS_REGION}.console.aws.amazon.com/ecs/home?region=${AWS_REGION}#/taskDefinitions/${NEW_TASKDEF_NAME}/${NEW_TASKDEF_REV}"
-    echo "Posting Slack Notification to WebHook: $SLACK_WEBHOOK";
     SLACK_PRETEXT="New ECS Deployment:"
     SLACK_MESSAGE="Service <${SERVICE_URL}|${SERVICE}> updated with new Task Definition <${TASKDEF_URL}|${NEW_TASKDEF}>"
+    echo "Posting Slack Notification to WebHook: $SLACK_WEBHOOK";
     PAYLOAD="payload={\"channel\": \"${SLACK_CHANNEL}\", \"username\": \"${SLACK_BOTNAME}\", \"attachments\":[{\"fallback\":\"${SLACK_PRETEXT} ${SLACK_MESSAGE}\", \"pretext\":\"*${SLACK_PRETEXT} ${SLACK_MESSAGE}*\", \"color\":\"${SLACK_COLOR}\", \"mrkdwn_in\":[\"text\", \"pretext\"], \"fields\":[{\"title\":\"Service\", \"value\":\"${SERVICE}\", \"short\":false}, {\"title\":\"Task Definiton\", \"value\":\"${NEW_TASKDEF}\", \"short\":false}]}] }"
     CURL_RESULT=`curl -s -S -X POST --data-urlencode "$PAYLOAD" $SLACK_WEBHOOK`
 fi
@@ -129,5 +149,5 @@ do
 done
 
 # Timeout
-echo "ERROR: New task definition not running within $ECS_TIMEOUT seconds"
+failure "New task definition for ${SERVICE} NOT RUNNING within ${ECS_TIMEOUT} seconds"
 exit 1

@@ -75,5 +75,7 @@ _Credit: The main body (and workflow) of this script is original, however it was
  - the **Github Commit URL** of the commit that caused this deployment (Optional)
 
    Examples (aws-cli): 
+   
    `aws sqs send-message --queue-url "<SQS_URL>"  --message-body "<NEW_TASK_DEF>" --message-attributes '{"service" : { "DataType":"String", "StringValue":"<SERVICE_NAME>"}}'`
+   
    `aws sqs send-message --queue-url "<SQS_URL>"  --message-body "<NEW_TASK_DEF>" --message-attributes '{"service" : { "DataType":"String", "StringValue":"<SERVICE_NAME>"}, "commit_url" : { "DataType":"String", "StringValue":"<COMMIT_URL>"}}'`

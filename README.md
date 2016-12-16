@@ -72,5 +72,8 @@ _Credit: The main body (and workflow) of this script is original, however it was
 4. The SQS messages in the queue providing the new task definitions must have:
  - the complete **Task Definition JSON** as the **Message Body** (SQS will escape the JSON payload as required)
  - the target **ECS Service name** set as a **Message Attribute** named **"service"** (the value *"false"* will result in task def registration only)
+ - the **Github Commit URL** of the commit that caused this deployment (Optional)
 
-   Example (aws-cli): `aws sqs send-message --queue-url "<SQS_URL>"  --message-body "<NEW_TASK_DEF>" --message-attributes '{"service" : { "DataType":"String", "StringValue":"<SERVICE_NAME>"}}'`
+   Examples (aws-cli): 
+   `aws sqs send-message --queue-url "<SQS_URL>"  --message-body "<NEW_TASK_DEF>" --message-attributes '{"service" : { "DataType":"String", "StringValue":"<SERVICE_NAME>"}}'`
+   `aws sqs send-message --queue-url "<SQS_URL>"  --message-body "<NEW_TASK_DEF>" --message-attributes '{"service" : { "DataType":"String", "StringValue":"<SERVICE_NAME>"}, "commit_url" : { "DataType":"String", "StringValue":"<COMMIT_URL>"}}'`

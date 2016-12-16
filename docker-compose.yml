@@ -1,5 +1,5 @@
 ecs-deployment:
-    image: uqlibrary/docker-ecs-deployment:9
+    image: uqlibrary/docker-ecs-deployment:10
     env_file:
         - local.env
     volumes:

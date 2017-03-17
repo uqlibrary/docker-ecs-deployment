@@ -1,54 +1,52 @@
 {
-  "family": "ecs-deployment",
-  "containerDefinitions": [
-    {
-      "name": "ecs-deployment",
-      "image": "uqlibrary/docker-ecs-deployment:6",
-      "cpu": 128,
-      "memory": 256,
-      "entryPoint": [],
-      "environment" : [
-        { 
-          "name" : "SQS_URL", 
-          "value" : "<SQS_URL>" 
-        },
-        { 
-          "name" : "ECS_CLUSTER", 
-          "value" : "default" 
-        },
-        { 
-          "name" : "ECS_TIMEOUT", 
-          "value" : "300" 
-        },
-        { 
-          "name" : "SLACK_WEBHOOK", 
-          "value" : "<SLACK_WEBHOOK>" 
-        },
-        { 
-          "name" : "SLACK_CHANNEL", 
-          "value" : "<SLACK_CHANNEL>" 
-        }
-      ],
-      "command": [],
-      "portMappings": [],
-      "volumesFrom": [],
-      "links": [],
-      "mountPoints": [
+    "networkMode": "bridge",
+    "taskRoleArn": "arn:aws:iam::908660671515:role/ecsTaskRole-ecs-deployment",
+    "containerDefinitions": [
         {
-          "sourceVolume": "aws",
-          "containerPath": "/root/.aws",
-          "readOnly": false
+            "volumesFrom": [],
+            "memory": 512,
+            "portMappings": [],
+            "essential": true,
+            "entryPoint": [],
+            "mountPoints": [],
+            "name": "ecs-deployment",
+            "environment": [
+                {
+                    "name": "ECS_TIMEOUT",
+                    "value": "300"
+                },
+                {
+                    "name": "SLACK_CHANNEL",
+                    "value": "<SLACK_CHANNEL>"
+                },
+                {
+                    "name": "ECS_CLUSTER",
+                    "value": "default"
+                },
+                {
+                    "name": "SLACK_WEBHOOK",
+                    "value": "<SLACK_WEBHOOK>"
+                },
+                {
+                    "name": "SQS_URL",
+                    "value": "<SQS_URL>"
+                }
+            ],
+            "links": [],
+            "image": "uqlibrary/docker-ecs-deployment:11",
+            "command": [],
+            "logConfiguration": {
+                "logDriver": "syslog",
+                "options": {
+                    "syslog-address": "<SYSLOG_ENDPOINT>",
+                    "tag": "{{.Name}}/{{.ID}}"
+                }
+            },
+            "cpu": 128,
+            "memoryReservation": 256
         }
-      ],
-      "essential": true
-    }
-  ],
-  "volumes": [
-    {
-      "name": "aws",
-      "host": {
-        "sourcePath": "/root/services/ecs-deployment/aws"
-      }
-    }
-  ]
+    ],
+    "placementConstraints": [],
+    "volumes": [],
+    "family": "ecs-deployment"
 }

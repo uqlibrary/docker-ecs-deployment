@@ -33,7 +33,7 @@
                 }
             ],
             "links": [],
-            "image": "uqlibrary/docker-ecs-deployment:12",
+            "image": "uqlibrary/docker-ecs-deployment:latest",
             "command": [],
             "logConfiguration": {
                 "logDriver": "syslog",

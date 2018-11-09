@@ -88,12 +88,16 @@ NEW_TASK_VOLUMES=`jq < $JSONFILE '.volumes'`
 if [[ $NEW_TASK_VOLUMES == "null" ]] || [[ -z $NEW_TASK_VOLUMES ]] ; then failure "Task Definition malformed (Volumes not found)" && exit 1; fi
 
 
-# Check service exists (if provided) and get current task definition name
+# Check service exists (if provided) and get current task definition name and task count
 if ! [[ $SERVICE == "false" ]] ; then
     CURRENT_TASK_ARN=`aws ecs describe-services --services $SERVICE --cluster $ECS_CLUSTER | jq .services[0].taskDefinition | tr -d '"'`
     if [[ $CURRENT_TASK_ARN == "null" ]] || [[ -z $CURRENT_TASK_ARN ]] ; then failure "Service ${SERVICE} not found" && exit 1; fi
     CURRENT_TASK=`echo ${CURRENT_TASK_ARN} |cut -d':' -f6-7 |cut -d'/' -f2`
     echo "Current task definition: $CURRENT_TASK";
+    
+    DESIRED_TASK_COUNT=`aws ecs describe-services --services $SERVICE --cluster $ECS_CLUSTER | jq .services[0].desiredCount `
+    if [[ $DESIRED_TASK_COUNT == "null" ]] || [[ -z $DESIRED_TASK_COUNT ]] ; then failure "Service ${SERVICE} TASK COUNT not found" && exit 1; fi
+    echo "Service task count: $DESIRED_TASK_COUNT";
 fi
 
 
@@ -116,22 +120,22 @@ AWS_REGION=`echo ${NEW_TASKDEF_ARN} |cut -d':' -f4`
 SERVICE_URL="https://${AWS_REGION}.console.aws.amazon.com/ecs/home?region=${AWS_REGION}#/clusters/${ECS_CLUSTER}/services/${SERVICE}/tasks"
 TASKDEF_URL="https://${AWS_REGION}.console.aws.amazon.com/ecs/home?region=${AWS_REGION}#/taskDefinitions/${NEW_TASKDEF_NAME}/${NEW_TASKDEF_REV}"
 SLACK_PRETEXT="ECS Deployment:"
+SLACK_MESSAGE="Registered new Task Definition <${TASKDEF_URL}|${NEW_TASKDEF}>"
 
-
-# Update the service (if specified)
-if [[ $SERVICE == "false" ]] ; then
-    echo "Service set to FALSE";
-    SLACK_MESSAGE="Registered new Task Definition <${TASKDEF_URL}|${NEW_TASKDEF}>"
-else 
-    echo "Updating service: $SERVICE";
-    UPDATE=`aws ecs update-service --cluster $ECS_CLUSTER --service $SERVICE --task-definition $NEW_TASKDEF_ARN`
-    SLACK_MESSAGE="Service <${SERVICE_URL}|${SERVICE}> updated with new Task Definition <${TASKDEF_URL}|${NEW_TASKDEF}>"
-fi
 
 # Add Github Commit link if provided
 if ! [[ $COMMIT_URL == "false" ]] ; then
     COMMIT_ID=`echo ${COMMIT_URL} |sed 's/.*\/\(.*\)$/\1/'`
     SLACK_MESSAGE="${SLACK_MESSAGE} \nCommit ID: <${COMMIT_URL}|${COMMIT_ID}>"
+fi
+
+# Update the service (if specified)
+if [[ $SERVICE == "false" ]] ; then
+    echo "Service set to FALSE";
+else 
+    echo "Updating service: $SERVICE";
+    UPDATE=`aws ecs update-service --cluster $ECS_CLUSTER --service $SERVICE --task-definition $NEW_TASKDEF_ARN`
+    SLACK_MESSAGE="Starting Service Update of <${SERVICE_URL}|${SERVICE}> with new Task Definition <${TASKDEF_URL}|${NEW_TASKDEF}>"
 fi
 
 # Send Slack Notification (if enabled)
@@ -141,8 +145,8 @@ if [[ $SLACK_NOTIFY == "true" ]] ; then
     CURL_RESULT=`curl -s -S -X POST --data-urlencode "$SLACK_PAYLOAD" $SLACK_WEBHOOK`
 fi
 
-# Exit now if no service update to wait for
-if [[ $SERVICE == "false" ]] ; then
+# Exit now if no service update to wait for (or desired task count is zero)
+if [[ $SERVICE == "false" ]] || [ $DESIRED_TASK_COUNT -lt 1 ] ; then
     echo "Success, new task definition registered.";
     exit 0
 fi
@@ -168,6 +172,16 @@ do
 
   if ! [[ -z $RUNNING ]]; then
     echo "Service updated successfully, new task definition running.";
+    SLACK_PRETEXT="ECS Service Update Successful:"
+    SLACK_MESSAGE="Completed Service Update of <${SERVICE_URL}|${SERVICE}> with new Task Definition <${TASKDEF_URL}|${NEW_TASKDEF}>"
+
+	# Send Slack Notification (if enabled)
+	if [[ $SLACK_NOTIFY == "true" ]] ; then
+	    echo "Posting Slack Notification to WebHook: $SLACK_WEBHOOK";
+	    SLACK_PAYLOAD="payload={\"channel\": \"${SLACK_CHANNEL}\", \"username\": \"${SLACK_BOTNAME}\", \"attachments\":[{\"fallback\":\"${SLACK_PRETEXT} ${SLACK_MESSAGE}\", \"color\":\"${SLACK_COLOR}\", \"mrkdwn_in\":[\"text\", \"pretext\"], \"fields\":[{\"title\":\"${SLACK_PRETEXT}\", \"value\":\"${SLACK_MESSAGE}\", \"short\":false}]}] }"
+	    CURL_RESULT=`curl -s -S -X POST --data-urlencode "$SLACK_PAYLOAD" $SLACK_WEBHOOK`
+	fi
+
     exit 0
   fi
   

@@ -7,9 +7,9 @@ DEPLOYMENT_TASK_METADATA=$(curl -s ${ECS_CONTAINER_METADATA_URI}/task)
 DEPLOYMENT_TASK_CLUSTER=$(echo "${DEPLOYMENT_TASK_METADATA}" |jq -r '.Cluster')
 DEPLOYMENT_TASK_ARN=$(echo "${DEPLOYMENT_TASK_METADATA}" |jq -r '.TaskARN')
 AWS_REGION=$(echo "${DEPLOYMENT_TASK_ARN}" |cut -d':' -f4)
-DEPLOYMENT_TASK_ID=$(echo "${DEPLOYMENT_TASK_ARN}" |cut -d':' -f6 |cut -d'/' -f2)
+DEPLOYMENT_TASK_ID=$(echo "${DEPLOYMENT_TASK_ARN}" |cut -d':' -f6 |cut -d'/' -f3)
 DEPLOYMENT_TASK_URL="https://${AWS_REGION}.console.aws.amazon.com/ecs/home?region=${AWS_REGION}#/clusters/${DEPLOYMENT_TASK_CLUSTER}/tasks/${DEPLOYMENT_TASK_ID}"
-DEPLOYMENT_TASK_LOGS_URL="https://${AWS_REGION}.console.aws.amazon.com/cloudwatch/home?region=${AWS_REGION}#logEventViewer:group=/ecs/ecs-deployment;stream=ecs/logs/${DEPLOYMENT_TASK_ID}"
+DEPLOYMENT_TASK_LOGS_URL="https://${AWS_REGION}.console.aws.amazon.com/cloudwatch/home?region=${AWS_REGION}#logEventViewer:group=/ecs/ecs-deployment;stream=ecs/ecs-deployment/${DEPLOYMENT_TASK_ID}"
 
 # Test for missing ENV vars
 if [[ -z $SQS_URL ]] ; then

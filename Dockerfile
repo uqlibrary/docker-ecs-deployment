@@ -1,4 +1,4 @@
-FROM uqlibrary/centos:210510
+FROM uqlibrary/centos:210511
 
 RUN \
  curl -o /root/ecs-deployment https://raw.githubusercontent.com/uqlibrary/docker-ecs-deployment/master/ecs-deployment && \
